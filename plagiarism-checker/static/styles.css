@@ -2,3 +2,12 @@
 .card { border-radius: 12px; }
 .display-6 { font-weight: 700; }
 .small { font-size: .9rem; }
+.highlight {
+    background-color: #fff3b0; /* light yellow */
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 0 2px;
+}
+.highlight:hover {
+    background-color: #ffe066; /* darker yellow on hover */
+}

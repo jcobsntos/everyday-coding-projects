@@ -1,13 +1,20 @@
 import os
 import random
-import numpy as np
 import requests
 import docx
 import PyPDF2
 from bs4 import BeautifulSoup
-from googlesearch import search   # install with: pip install google
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from urllib.parse import quote
+from rapidfuzz import fuzz
+import numpy as np
+from dotenv import load_dotenv
+
+# Load .env
+load_dotenv()
+
+# --- Google CSE Configuration ---
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+CX = os.getenv("GOOGLE_CSE_ID")
 
 
 # --- File extractors ---
@@ -31,7 +38,7 @@ def extract_text_from_file(path: str) -> str:
 
 
 # --- Phrase sampler ---
-def sample_random_phrases(text: str, n_phrases=10, min_words=5, max_words=10):
+def sample_random_phrases(text: str, n_phrases=5, min_words=10, max_words=30):
     words = text.split()
     if len(words) < min_words:
         return [text]
@@ -45,15 +52,28 @@ def sample_random_phrases(text: str, n_phrases=10, min_words=5, max_words=10):
     return phrases
 
 
-# --- Web search ---
+# --- Google CSE search ---
 def search_web_for_phrase(phrase: str, top_k=5):
-    """Uses Google search to find results for a phrase."""
     results = []
+    phrase = phrase.strip()
+    if len(phrase) > 200:
+        phrase = phrase[:200] + "..."
+    query = quote(f'"{phrase}"')
+
+    url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={CX}&q={query}&num={top_k}"
     try:
-        for url in search(f'"{phrase}"', num_results=top_k):
-            results.append({"link": url, "title": url, "snippet": ""})
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        items = data.get("items", [])
+        for item in items:
+            results.append({
+                "url": item.get("link"),
+                "title": item.get("title"),
+                "snippet": item.get("snippet"),
+            })
     except Exception as e:
-        print("Search error:", e)
+        print(f"CSE search error: {e}")
     return results
 
 
@@ -64,11 +84,8 @@ def fetch_and_clean_url(url: str, timeout=5):
         if resp.status_code != 200:
             return ""
         soup = BeautifulSoup(resp.text, "html.parser")
-
-        # Remove scripts & styles
         for tag in soup(["script", "style"]):
             tag.extract()
-
         text = soup.get_text(separator=" ")
         return " ".join(text.split())
     except Exception as e:
@@ -76,37 +93,46 @@ def fetch_and_clean_url(url: str, timeout=5):
         return ""
 
 
-# --- Similarity Report ---
-def compute_similarity_(user_text, sources):
+# --- Similarity Report using RapidFuzz ---
+def compute_similarity_report(user_text: str, sources: list):
     """
-    user_text: str (uploaded document text)
-    sources: list of dicts [{ "title": ..., "url": ..., "content": ..., "query_phrase": ... }]
-
-    returns: dict with overall similarity, mean top 5, and per-source details
+    Computes similarity using sentence-level fuzzy matching (RapidFuzz)
+    Returns overall similarity, mean top 5, and per-source overlaps
     """
     results = []
 
-    # Prepare vectorizer
-    documents = [user_text] + [s["content"] for s in sources]
-    vectorizer = TfidfVectorizer(stop_words="english")
-    tfidf_matrix = vectorizer.fit_transform(documents)
+    for s in sources:
+        content = s.get("content", "")
+        overlaps = []
 
-    # Compute cosine similarities (compare doc[0] to others)
-    similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:]).flatten()
+        # Split into sentences
+        user_sentences = [sent.strip() for sent in user_text.split(".") if sent.strip()]
+        source_sentences = [sent.strip() for sent in content.split(".") if sent.strip()]
 
-    for i, s in enumerate(sources):
-        sim = round(similarities[i] * 100, 2)  # percentage
+        for us in user_sentences:
+            # Find best matching sentence in source
+            best_match = max(
+                [(ss, fuzz.token_set_ratio(us, ss)) for ss in source_sentences],
+                key=lambda x: x[1],
+                default=("", 0)
+            )
+            if best_match[1] >= 70:  # threshold for similarity
+                overlaps.append({
+                    "source_excerpt": best_match[0][:200],
+                    "score": best_match[1]
+                })
+
+        similarity = np.mean([o["score"] for o in overlaps]) if overlaps else 0
+
         results.append({
             "title": s.get("title") or "Untitled",
             "url": s.get("url"),
-            "similarity": sim,
+            "similarity": round(similarity, 2),
             "query_phrase": s.get("query_phrase"),
-            "overlaps": s.get("overlaps", [])
+            "overlaps": overlaps
         })
 
-    # Sort descending
     results.sort(key=lambda r: r["similarity"], reverse=True)
-
     overall = np.mean([r["similarity"] for r in results]) if results else 0
     top5 = np.mean([r["similarity"] for r in results[:5]]) if results else 0
 

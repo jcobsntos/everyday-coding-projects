@@ -53,26 +53,25 @@ def analyze():
     try:
         source_text = extract_text_from_file(path)
 
-        # ⚡ Reduced to fewer phrases for speed
-        phrases = sample_random_phrases(source_text, n_phrases=5, min_words=5, max_words=10)
+        # Sample longer phrases for better search
+        phrases = sample_random_phrases(source_text, n_phrases=5, min_words=10, max_words=30)
 
         scraped_docs = []
         for phrase in phrases:
-            # ⚡ Fewer search results
-            results = search_web_for_phrase(phrase, top_k=3)
+            results = search_web_for_phrase(phrase, top_k=5)
             for r in results:
-                # ⚡ Reduced timeout
-                cleaned = fetch_and_clean_url(r["link"], timeout=5)
+                cleaned = fetch_and_clean_url(r["url"], timeout=5)
                 if cleaned and len(cleaned.split()) > 50:
                     scraped_docs.append({
-                        "url": r["link"],
+                        "url": r["url"],
                         "title": r.get("title"),
                         "snippet": r.get("snippet"),
-                        "text": cleaned,
+                        "content": cleaned,  # important for RapidFuzz
                         "query_phrase": phrase,
                     })
 
         report = compute_similarity_report(source_text, scraped_docs)
+
         return render_template(
             "results.html",
             report=report,
@@ -80,6 +79,7 @@ def analyze():
             uploaded_filename=filename,
             analyzed_at=datetime.utcnow(),
         )
+
     except Exception as exc:
         flash(f"Error during analysis: {exc}", "danger")
         return redirect(url_for("index"))
@@ -91,6 +91,7 @@ def export_pdf():
     if not html:
         flash("No data to export.", "warning")
         return redirect(url_for("index"))
+
     pdf_bytes = render_results_pdf(html)
     return send_file(
         io.BytesIO(pdf_bytes),
