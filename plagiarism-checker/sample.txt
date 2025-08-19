@@ -1,0 +1,1 @@
+This is a small sample document. It contains a couple of sentences to test the phrase extractor and similarity pipeline.

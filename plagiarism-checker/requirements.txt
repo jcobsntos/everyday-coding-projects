@@ -1,0 +1,17 @@
+Flask>=3.0
+python-dotenv>=1.0
+python-docx>=1.1
+pdfminer.six>=20231228
+trafilatura>=1.7
+requests>=2.32
+beautifulsoup4>=4.12
+scikit-learn>=1.5
+rapidfuzz>=3.9
+weasyprint>=62.3
+serpapi>=0.1.5
+Flask
+PyPDF2
+docx2txt
+requests
+beautifulsoup4
+

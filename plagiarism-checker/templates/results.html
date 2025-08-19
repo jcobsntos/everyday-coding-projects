@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between">
+  <h1 class="h3">Results</h1>
+  <form method="post" action="{{ url_for('export_pdf') }}">
+    <textarea name="html_payload" class="d-none">{% filter forceescape %}
+      <h1>Plagiarism Report</h1>
+      <p class="muted">Uploaded: {{ uploaded_filename }} | Analyzed at: {{ analyzed_at }} UTC</p>
+      <p class="score">Overall Similarity: {{ report.overall_similarity }}%</p>
+      <p>Mean Top 5 Similarity: {{ report.mean_top5_similarity }}%</p>
+      <h2>Top Matches ({{ report.num_sources }})</h2>
+      {% for r in report.by_url %}
+        <div class="card">
+          <div><strong>{{ r.title or 'Untitled' }}</strong></div>
+          <div><a href="{{ r.url }}">{{ r.url }}</a></div>
+          <div>Similarity: {{ r.similarity }}%</div>
+          {% if r.overlaps %}
+            <div class="mt-2"><em>Similar excerpts (sample):</em>
+            <ul>
+              {% for o in r.overlaps %}
+                <li>{{ o.source_excerpt }} … (fuzzy {{ o.score }})</li>
+              {% endfor %}
+            </ul>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% endfilter %}</textarea>
+    <button class="btn btn-outline-secondary">Download PDF</button>
+  </form>
+</div>
+
+<div class="row g-3 mt-2">
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm p-3">
+      <div class="display-6">{{ report.overall_similarity }}%</div>
+      <div class="text-muted">Overall similarity</div>
+      <hr />
+      <div class="h5">Mean Top 5: {{ report.mean_top5_similarity }}%</div>
+      <div class="small text-muted">Based on TF‑IDF cosine across fetched pages.</div>
+    </div>
+
+    <div class="card shadow-sm p-3 mt-3">
+      <div class="h6">Sampled Query Phrases</div>
+      <ol class="small">
+        {% for p in phrases %}
+          <li>{{ p }}</li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-8">
+    {% for r in report.by_url %}
+    <div class="card shadow-sm p-3 mb-3">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="h5 mb-1">{{ r.title or 'Untitled' }}</div>
+          <a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.url }}</a>
+          <div class="small text-muted">Query phrase: “{{ r.query_phrase }}”</div>
+        </div>
+        <div class="badge bg-primary fs-6">{{ r.similarity }}%</div>
+      </div>
+      {% if r.overlaps %}
+        <div class="mt-2">
+          <strong>Similar excerpts</strong>
+          <ul class="small">
+            {% for o in r.overlaps %}
+              <li>{{ o.source_excerpt }} … <span class="text-muted">(fuzzy {{ o.score }})</span></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
